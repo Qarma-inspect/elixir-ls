@@ -130,7 +130,7 @@ defmodule ElixirLS.LanguageServer.SourceFile.PathTest do
   describe "to_uri/1" do
     # tests based on cases from https://github.com/microsoft/vscode-uri/blob/master/src/test/uri.test.ts
     test "unix path" do
-      with_os(:linux, fn ->
+      unless is_windows() do
         assert "file:///nodes%2B%23.ex" == to_uri("/nodes+#.ex")
         assert "file:///coding/c%23/project1" == to_uri("/coding/c#/project1")
 
@@ -139,15 +139,18 @@ defmodule ElixirLS.LanguageServer.SourceFile.PathTest do
 
         assert "file:///foo/%25A0.txt" == to_uri("/foo/%A0.txt")
         assert "file:///foo/%252e.txt" == to_uri("/foo/%2e.txt")
-      end)
+      end
     end
 
     test "windows path" do
       if is_windows() do
+        drive_letter = Path.expand("/") |> String.split(":") |> hd()
         assert "file:///c%3A/win/path" == to_uri("c:/win/path")
         assert "file:///c%3A/win/path" == to_uri("C:/win/path")
         assert "file:///c%3A/win/path" == to_uri("c:/win/path/")
-        assert "file:///c%3A/win/path" == to_uri("/c:/win/path")
+
+        # this path may actually expand to other drive letter than C: (on GHA runner it expands to D:)
+        assert "file:///#{drive_letter}%3A/win/path" == to_uri("/c:/win/path")
 
         assert "file:///c%3A/win/path" == to_uri("c:\\win\\path")
         assert "file:///c%3A/win/path" == to_uri("c:\\win/path")
