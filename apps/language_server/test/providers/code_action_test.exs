@@ -22,7 +22,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -48,7 +48,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -74,7 +74,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -100,7 +100,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -126,7 +126,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -152,7 +152,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "var"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, []} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -173,7 +173,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
 
       diagnostic =
         "count"
-        |> create_message()
+        |> create_message_for_unused_variable()
         |> create_diagnostic(diagnostic_range)
 
       assert {:ok, [underscore_action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
@@ -184,7 +184,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
       assert_quickfix(new_text, quickfix_range, underscore_action)
     end
 
-    defp create_message(variable) do
+    defp create_message_for_unused_variable(variable) do
       "variable \"#{variable}\" is unused (if the variable is not meant to be used, prefix it with an underscore)"
     end
   end
@@ -228,6 +228,99 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
     end
   end
 
+  describe "replace unknown local function" do
+    test "function call" do
+      text = """
+      defmodule Example do
+        def main do
+          fo()
+        end
+
+        def foo do
+          42
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(2, 4, 2, 8)
+
+      diagnostic =
+        "fo"
+        |> create_message_for_unknown_function()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, [action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      new_text = "    foo()"
+      quickfix_range = create_range(2, 0, 2, 8)
+
+      assert_quickfix(new_text, quickfix_range, action)
+    end
+
+    test "function as an argument" do
+      text = """
+      defmodule Example do
+        def main do
+          Enum.map([4, 2], &fo/1)
+        end
+
+        def foo(var) do
+          var
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(2, 4, 2, 27)
+
+      diagnostic =
+        "fo"
+        |> create_message_for_unknown_function()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, [action]} = CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      new_text = "    Enum.map([4, 2], &foo/1)"
+      quickfix_range = create_range(2, 0, 2, 27)
+
+      assert_quickfix(new_text, quickfix_range, action)
+    end
+
+    test "function from a different module should not be proposed" do
+      text = """
+      defmodule Example do
+        defmodule Inner do
+          def foo(var) do
+            var
+          end
+        end
+
+        def main do
+          Enum.map([4, 2], &fo/1)
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(8, 4, 8, 27)
+
+      diagnostic =
+        "fo"
+        |> create_message_for_unknown_function()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, []} = CodeAction.code_actions(@uri, diagnostic, source_file)
+    end
+
+    defp create_message_for_unknown_function(function_name) do
+      "(CompileError) undefined function #{function_name}/0 (expected Example to define such a function or for it to be imported, but none are available)"
+    end
+  end
+
   defp create_range(start_line, start_character, end_line, end_character) do
     %{
       "end" => %{"character" => end_character, "line" => end_line},
@@ -235,12 +328,12 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
     }
   end
 
-  defp create_diagnostic(message, range) do
+  defp create_diagnostic(message, range, severity \\ 2) do
     [
       %{
         "message" => message,
         "range" => range,
-        "severity" => 2,
+        "severity" => severity,
         "source" => "Elixir"
       }
     ]
