@@ -1,15 +1,17 @@
 defmodule ElixirLS.LanguageServer.Providers.CodeAction.ReplaceRemoteFunction do
+  @behaviour ElixirLS.LanguageServer.Providers.CodeAction
+
   use ElixirLS.LanguageServer.Protocol
 
   alias ElixirLS.LanguageServer.Providers.CodeAction.Helpers
   alias ElixirLS.LanguageServer.SourceFile
-  
-  @spec pattern :: Regex.t()
+
+  @impl true
   def pattern, do: ~r/(.*)\/(.*) is undefined or private. .*:\n(.*)/s
 
+  @impl true
   def get_actions(uri, %{"message" => message, "range" => range}, source_file) do
-    [_, full_function_name, _function_arity, candidates_string] =
-      Regex.run(pattern(), message)
+    [_, full_function_name, _function_arity, candidates_string] = Regex.run(pattern(), message)
 
     function_module =
       full_function_name
@@ -29,7 +31,7 @@ defmodule ElixirLS.LanguageServer.Providers.CodeAction.ReplaceRemoteFunction do
     |> Enum.map(&(function_module <> "." <> &1))
     |> Enum.reject(&(&1 == full_function_name))
     |> Enum.map(fn full_candidate_name ->
-      title = "Replace unknown function with '#{full_candidate_name}'"
+      title = "'#{full_candidate_name}'"
       range = range(start_line, 0, start_line, String.length(source_line))
       new_text = String.replace(source_line, full_function_name, full_candidate_name)
 
