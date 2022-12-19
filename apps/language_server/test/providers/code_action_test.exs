@@ -321,6 +321,277 @@ defmodule ElixirLS.LanguageServer.Providers.CodeActionTest do
     end
   end
 
+  describe "actions for unknown module" do
+    test "there are no existing directives" do
+      text = """
+      defmodule Example do
+        def main do
+          Stat.from_record(%{})
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(2, 4, 2, 25)
+
+      diagnostic =
+        "Stat"
+        |> create_undefined_module_message("from_record")
+        |> create_diagnostic(diagnostic_range)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n\n", create_range(1, 0, 1, 0), add_alias_action)
+      assert_quickfix("    File.Stat.from_record(%{})", create_range(2, 0, 2, 25), replace_action)
+    end
+
+    test "there are existing aliases" do
+      text = """
+      defmodule Example do
+        import Integer
+
+        alias Macro.Env
+
+        def main do
+          Stat.from_record(%{})
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(6, 4, 6, 25)
+
+      diagnostic =
+        "Stat"
+        |> create_undefined_module_message("from_record")
+        |> create_diagnostic(diagnostic_range)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n", create_range(4, 0, 4, 0), add_alias_action)
+      assert_quickfix("    File.Stat.from_record(%{})", create_range(6, 0, 6, 25), replace_action)
+    end
+
+    test "no aliases, but there is a moduledoc" do
+      text = """
+      defmodule Example do
+        @moduledoc \"\"\"
+        Module doc.
+        \"\"\"
+
+        alias Macro.Env
+
+        def main do
+          Stat.from_record(%{})
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(8, 4, 8, 25)
+
+      diagnostic =
+        "Stat"
+        |> create_undefined_module_message("from_record")
+        |> create_diagnostic(diagnostic_range)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n", create_range(6, 0, 6, 0), add_alias_action)
+      assert_quickfix("    File.Stat.from_record(%{})", create_range(8, 0, 8, 25), replace_action)
+    end
+
+    test "no aliases, but there are different directives" do
+      text_builder = fn directive ->
+        """
+        defmodule Example do
+          #{directive}
+
+          def main do
+            Stat.from_record(%{})
+          end
+        end
+        """
+      end
+
+      assert_with_directive = fn directive ->
+        text = text_builder.(directive)
+
+        source_file = %SourceFile{text: text}
+
+        diagnostic_range = create_range(4, 4, 4, 25)
+
+        diagnostic =
+          "Stat"
+          |> create_undefined_module_message("from_record")
+          |> create_diagnostic(diagnostic_range)
+
+        assert {:ok, [add_alias_action, replace_action]} =
+                 CodeAction.code_actions(@uri, diagnostic, source_file)
+
+        assert_quickfix("\n  alias File.Stat\n", create_range(2, 0, 2, 0), add_alias_action)
+
+        assert_quickfix(
+          "    File.Stat.from_record(%{})",
+          create_range(4, 0, 4, 25),
+          replace_action
+        )
+      end
+
+      directives = [
+        "require Integer",
+        "import Integer",
+        "use ExUnit.Case",
+        "@behaviour GenServer"
+      ]
+
+      Enum.each(directives, assert_with_directive)
+    end
+
+    defp create_undefined_module_message(module_name, function_name) do
+      "#{module_name}.#{function_name}/0 is undefined (module #{module_name} is not available or is yet to be defined)"
+    end
+  end
+
+  describe "actions for unknown struct" do
+    test "there are no existing directives" do
+      text = """
+      defmodule Example do
+        def main do
+          %Stat{}
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(2, 4, 2, 11)
+
+      diagnostic =
+        "Stat"
+        |> create_unknown_struct_message()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n\n", create_range(1, 0, 1, 0), add_alias_action)
+      assert_quickfix("    %File.Stat{}", create_range(2, 0, 2, 11), replace_action)
+    end
+
+    test "there are existing aliases" do
+      text = """
+      defmodule Example do
+        import Integer
+
+        alias Macro.Env
+
+        def main do
+          %Stat{}
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(6, 4, 6, 11)
+
+      diagnostic =
+        "Stat"
+        |> create_unknown_struct_message()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n", create_range(4, 0, 4, 0), add_alias_action)
+      assert_quickfix("    %File.Stat{}", create_range(6, 0, 6, 11), replace_action)
+    end
+
+    test "no aliases, but there is a moduledoc" do
+      text = """
+      defmodule Example do
+        @moduledoc \"\"\"
+        Module doc.
+        \"\"\"
+
+        alias Macro.Env
+
+        def main do
+          %Stat{}
+        end
+      end
+      """
+
+      source_file = %SourceFile{text: text}
+
+      diagnostic_range = create_range(8, 4, 8, 11)
+
+      diagnostic =
+        "Stat"
+        |> create_unknown_struct_message()
+        |> create_diagnostic(diagnostic_range, 1)
+
+      assert {:ok, [add_alias_action, replace_action]} =
+               CodeAction.code_actions(@uri, diagnostic, source_file)
+
+      assert_quickfix("  alias File.Stat\n", create_range(6, 0, 6, 0), add_alias_action)
+      assert_quickfix("    %File.Stat{}", create_range(8, 0, 8, 11), replace_action)
+    end
+
+    test "no aliases, but there are different directives" do
+      text_builder = fn directive ->
+        """
+        defmodule Example do
+          #{directive}
+
+          def main do
+            %Stat{}
+          end
+        end
+        """
+      end
+
+      assert_with_directive = fn directive ->
+        text = text_builder.(directive)
+
+        source_file = %SourceFile{text: text}
+
+        diagnostic_range = create_range(4, 4, 4, 11)
+
+        diagnostic =
+          "Stat"
+          |> create_unknown_struct_message()
+          |> create_diagnostic(diagnostic_range, 1)
+
+        assert {:ok, [add_alias_action, replace_action]} =
+                 CodeAction.code_actions(@uri, diagnostic, source_file)
+
+        assert_quickfix("\n  alias File.Stat\n", create_range(2, 0, 2, 0), add_alias_action)
+        assert_quickfix("    %File.Stat{}", create_range(4, 0, 4, 11), replace_action)
+      end
+
+      directives = [
+        "require Integer",
+        "import Integer",
+        "use ExUnit.Case",
+        "@behaviour GenServer"
+      ]
+
+      Enum.each(directives, assert_with_directive)
+    end
+
+    defp create_unknown_struct_message(module_name) do
+      "(CompileError) #{module_name}.__struct__/1 is undefined, cannot expand struct #{module_name}. Make sure the struct name is correct. If the struct name exists and is correct but it still cannot be found, you likely have cyclic module usage in your code"
+    end
+  end
+
   defp create_range(start_line, start_character, end_line, end_character) do
     %{
       "end" => %{"character" => end_character, "line" => end_line},
