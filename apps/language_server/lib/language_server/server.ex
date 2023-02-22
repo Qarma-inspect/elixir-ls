@@ -33,7 +33,8 @@ defmodule ElixirLS.LanguageServer.Server do
     CodeLens,
     ExecuteCommand,
     FoldingRange,
-    CodeAction
+    CodeAction,
+    RenameSymbol
   }
 
   alias ElixirLS.Utils.Launch
@@ -786,6 +787,18 @@ defmodule ElixirLS.LanguageServer.Server do
     {:async, fn -> CodeAction.code_actions(uri, diagnostics, source_file) end, state}
   end
 
+  defp handle_request(prepare_rename_req(_id, uri, position), state = %__MODULE__{}) do
+    source_file = get_source_file(state, uri)
+
+    {:async, fn -> RenameSymbol.prepare(uri, position, source_file) end, state}
+  end
+
+  defp handle_request(rename_req(_id, uri, position, new_name), state = %__MODULE__{}) do
+    source_file = get_source_file(state, uri)
+
+    {:async, fn -> RenameSymbol.rename(uri, position, new_name, source_file) end, state}
+  end
+
   defp handle_request(%{"method" => "$/" <> _}, state = %__MODULE__{}) do
     # "$/" requests that the server doesn't support must return method_not_found
     {:error, :method_not_found, nil, state}
@@ -831,6 +844,7 @@ defmodule ElixirLS.LanguageServer.Server do
       "workspaceSymbolProvider" => true,
       "documentOnTypeFormattingProvider" => %{"firstTriggerCharacter" => "\n"},
       "codeLensProvider" => %{"resolveProvider" => false},
+      "renameProvider" => %{"prepareProvider" => true},
       "executeCommandProvider" => %{
         "commands" => ExecuteCommand.get_commands(server_instance_id)
       },
