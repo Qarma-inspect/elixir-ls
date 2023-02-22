@@ -25,7 +25,7 @@ defmodule ElixirLS.Debugger.Mixfile do
 
   defp deps do
     [
-      {:elixir_sense, github: "elixir-lsp/elixir_sense"},
+      {:elixir_sense, github: "Qarma-inspect/elixir_sense"},
       {:elixir_ls_utils, in_umbrella: true},
       {:dialyxir_vendored, github: "elixir-lsp/dialyxir", branch: "vendored", runtime: false}
     ]
