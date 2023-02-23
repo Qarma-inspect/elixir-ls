@@ -17,7 +17,6 @@ defmodule ElixirLS.LanguageServer.Server do
 
   use GenServer
   require Logger
-  alias ElixirLS.LanguageServer.Experimental
   alias ElixirLS.LanguageServer.Server.Decider
   alias ElixirLS.LanguageServer.{SourceFile, Build, Protocol, JsonRpc, Dialyzer, Diagnostics}
 
@@ -882,7 +881,7 @@ defmodule ElixirLS.LanguageServer.Server do
         "workspaceFolders" => %{"supported" => false, "changeNotifications" => false}
       },
       "foldingRangeProvider" => true,
-      "codeActionProvider" => Experimental.LanguageServer.enabled?()
+      "codeActionProvider" => true
     }
   end
 
