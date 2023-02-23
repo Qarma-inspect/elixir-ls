@@ -4,7 +4,7 @@ defmodule ElixirLS.LanguageServer.Mixfile do
   def project do
     [
       app: :language_server,
-      version: "0.12.0",
+      version: "0.13.0",
       elixir: ">= 1.12.0",
       build_path: "../../_build",
       config_path: "../../config/config.exs",
@@ -29,12 +29,13 @@ defmodule ElixirLS.LanguageServer.Mixfile do
       {:elixir_ls_utils, in_umbrella: true},
       {:elixir_sense, github: "Qarma-inspect/elixir_sense"},
       {:erl2ex, github: "dazuma/erl2ex"},
+      {:sourceror, "0.11.2"},
       {:dialyxir_vendored, github: "elixir-lsp/dialyxir", branch: "vendored", runtime: false},
       {:jason_vendored, github: "elixir-lsp/jason", branch: "vendored"},
       {:stream_data, "~> 0.5", only: [:dev, :test], runtime: false},
       {:path_glob_vendored, github: "elixir-lsp/path_glob", branch: "vendored"},
-      {:patch, "~> 0.12.0", only: :test},
-      {:benchee, "~> 1.0", only: :dev}
+      {:patch, "~> 0.12.0", only: [:dev, :test], runtime: false},
+      {:benchee, "~> 1.0", only: :dev, runtime: false}
     ]
   end
 

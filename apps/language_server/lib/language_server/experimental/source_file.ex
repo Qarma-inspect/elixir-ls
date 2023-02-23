@@ -1,6 +1,9 @@
 defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
+  alias ElixirLS.LanguageServer.Experimental.Protocol.Types.TextDocument.ContentChangeEvent
+
   alias ElixirLS.LanguageServer.Experimental.SourceFile.Conversions
   alias ElixirLS.LanguageServer.Experimental.SourceFile.Document
+  alias ElixirLS.LanguageServer.Experimental.SourceFile.Line
   alias ElixirLS.LanguageServer.Experimental.SourceFile.Position
   alias ElixirLS.LanguageServer.Experimental.SourceFile.Range
   alias ElixirLS.LanguageServer.SourceFile
@@ -20,14 +23,21 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
   @type version :: pos_integer()
   @type change_application_error :: {:error, {:invalid_range, map()}}
   # public
-  @spec new(URI.t(), String.t(), pos_integer()) :: t
+
   def new(uri, text, version) do
+    uri = Conversions.ensure_uri(uri)
+
     %__MODULE__{
       uri: uri,
       version: version,
       document: Document.new(text),
       path: SourceFile.Path.from_uri(uri)
     }
+  end
+
+  @spec size(t) :: non_neg_integer()
+  def size(%__MODULE__{} = source) do
+    Document.size(source.document)
   end
 
   @spec mark_dirty(t) :: t
@@ -42,15 +52,21 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
 
   @spec fetch_text_at(t, version()) :: {:ok, String.t()} | :error
   def fetch_text_at(%__MODULE{} = source, line_number) do
-    with {:ok, line(text: text)} <- Document.fetch_line(source.document, line_number) do
-      {:ok, text}
-    else
-      _ ->
-        :error
+    case fetch_line_at(source, line_number) do
+      {:ok, line(text: text)} -> {:ok, text}
+      _ -> :error
     end
   end
 
-  @spec apply_content_changes(t, pos_integer(), [map]) ::
+  @spec fetch_line_at(t, version()) :: {:ok, Line.t()} | :error
+  def fetch_line_at(%__MODULE__{} = source, line_number) do
+    case Document.fetch_line(source.document, line_number) do
+      {:ok, line} -> {:ok, line}
+      _ -> :error
+    end
+  end
+
+  @spec apply_content_changes(t, pos_integer(), [map | ContentChangeEvent.t()]) ::
           {:ok, t} | change_application_error()
   def apply_content_changes(%__MODULE__{version: current_version}, new_version, _)
       when new_version <= current_version do
@@ -123,6 +139,23 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
     {:ok, %__MODULE__{source | document: new_document}}
   end
 
+  defp apply_change(%__MODULE__{} = source, %ContentChangeEvent{range: nil} = change) do
+    new_state =
+      source.uri
+      |> new(change.text, source.version)
+      |> increment_version()
+
+    {:ok, new_state}
+  end
+
+  defp apply_change(%__MODULE__{} = source, %ContentChangeEvent{} = change) do
+    with {:ok, ex_range} <- Conversions.to_elixir(change.range, source) do
+      apply_change(source, ex_range, change.text)
+    else
+      _ -> {:error, {:invalid_range, change.range}}
+    end
+  end
+
   defp apply_change(
          %__MODULE__{} = source,
          %{
@@ -159,7 +192,7 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
   end
 
   defp apply_valid_edits(%__MODULE{} = source, edit_text, start_pos, end_pos) do
-    Enum.reduce(source.document, [], fn line() = line, acc ->
+    Document.reduce(source.document, [], fn line() = line, acc ->
       case edit_action(line, edit_text, start_pos, end_pos) do
         :drop ->
           acc
@@ -184,17 +217,17 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
         {:append, [text, ending]}
 
       line_number == start_line && line_number == end_line ->
-        prefix_text = utf8_prefix(text, start_char)
-        suffix_text = utf8_suffix(text, end_char)
+        prefix_text = utf8_prefix(line, start_char)
+        suffix_text = utf8_suffix(line, end_char)
 
         {:append, [prefix_text, edit_text, suffix_text, ending]}
 
       line_number == start_line ->
-        prefix_text = utf8_prefix(text, start_char)
+        prefix_text = utf8_prefix(line, start_char)
         {:append, [prefix_text, edit_text]}
 
       line_number == end_line ->
-        suffix_text = utf8_suffix(text, end_char)
+        suffix_text = utf8_suffix(line, end_char)
         {:append, [suffix_text, ending]}
 
       true ->
@@ -202,15 +235,16 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
     end
   end
 
-  defp utf8_prefix(text, start_index) do
-    length = max(0, start_index)
+  defp utf8_prefix(line(text: text), start_code_unit) do
+    length = max(0, start_code_unit)
     binary_part(text, 0, length)
   end
 
-  defp utf8_suffix(text, start_index) do
+  defp utf8_suffix(line(text: text), start_code_unit) do
     byte_count = byte_size(text)
-    start_index = min(start_index, byte_count)
+    start_index = min(start_code_unit, byte_count)
     length = byte_count - start_index
+
     binary_part(text, start_index, length)
   end
 
@@ -219,12 +253,6 @@ defmodule ElixirLS.LanguageServer.Experimental.SourceFile do
   end
 
   defp increment_version(%__MODULE__{} = source) do
-    version =
-      case source.version do
-        v when is_integer(v) -> v + 1
-        _ -> 1
-      end
-
-    %__MODULE__{source | version: version}
+    %__MODULE__{source | version: source.version + 1}
   end
 end
